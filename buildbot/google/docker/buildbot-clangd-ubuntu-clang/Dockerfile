@@ -11,48 +11,21 @@
 #===----------------------------------------------------------------------===//
 
 # Use an official Ubuntu image as the base.
-FROM ubuntu:18.04
+FROM debian:bookworm
 
 # Install build tools.
 RUN apt-get update && \
     apt-get install -y software-properties-common apt-transport-https ca-certificates \
-    ninja-build git wget gnupg \
+    ninja-build git wget gnupg cmake clang lld \
     # Install ccache for local caching of builds.
     ccache \
     # Install python for buildbot and LIT.
-    python3.8 python3-pip python3-psutil && \
+    python3 python3-pip python3-psutil && \
     # Update system packages
     apt-get upgrade -y && \
     # Clean apt cache to reduce image size.
     apt-get clean
 
-# install latest LLVM release
-RUN wget https://apt.llvm.org/llvm.sh && \
-    chmod +x llvm.sh && \
-    ./llvm.sh 11 && \
-    rm -rf llvm.sh && \
-    # clean apt cache to reduce image size
-    apt-get clean
-
-# Ubuntu ships with old cmake version, install the latest one
-# from https://apt.kitware.com/
-RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | \
-    gpg --dearmor - | \
-    tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null && \
-    apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main' && \
-    apt-get update && \
-    apt-get install -y cmake && \
-    # Clean apt cache to reduce image size.
-    apt-get clean
-
-# configure default versions of LLVM tools and python needed for
-# buildbot-worker. We deliberately do this after installing all the system
-# packages, as apt-get install breaks if we change the Python from default to
-# python3.8.
-RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-11 100 ;\
-    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-11 100 ;\
-    update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/lld-11 100 ;\
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 100
 # Configure LLVM tools.
 ENV CC=clang
 ENV CXX=clang++
@@ -63,7 +36,7 @@ ENV LD=LLD
 # The grpc version shipped with Ubuntu 18.04 crashes on TSan checks.
 ENV GRPC_INSTALL_PATH=/usr/local/lib/grpc
 RUN cd /tmp ; \
-    git clone -b v1.36.3 --depth 1  --recursive --shallow-submodules https://github.com/grpc/grpc && \
+    git clone -b v1.62.1 --depth 1  --recursive --shallow-submodules https://github.com/grpc/grpc && \
     cd grpc &&  mkdir build && cd build && \
     cmake -G Ninja -DgRPC_INSTALL=ON -DCMAKE_INSTALL_PREFIX=${GRPC_INSTALL_PATH} -DCMAKE_BUILD_TYPE=Release .. && \
     cmake --build . --target install && \
@@ -71,7 +44,7 @@ RUN cd /tmp ; \
     cd / && rm -rf /tmp/grpc
 
 # Install build bot (server was at 2.8.5-dev at time of writing).
-RUN pip3 install buildbot-worker==2.8.4
+RUN pip3 install --break-system-packages buildbot-worker==2.8.4
 
 # Workaround permissions issues when writing to named volumes
 # https://github.com/docker/compose/issues/3270#issuecomment-206214034
